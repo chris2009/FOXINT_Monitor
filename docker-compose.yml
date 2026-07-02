@@ -113,7 +113,7 @@ services:
   ollama:
     image: ollama/ollama:latest
     ports:
-      - "11434:11434"
+      - "11435:11434"  # 11434 del host ya lo usa una instalación nativa de Ollama; interno sigue en 11434
     volumes:
       - ollamadata:/root/.ollama
     networks:

@@ -181,9 +181,9 @@ Esto levanta los 8 servicios: `frontend`, `backend`, `worker`, `beat`, `postgres
 | API (backend) | http://localhost:8000 |
 | Documentación interactiva de la API (Swagger) | http://localhost:8000/docs |
 | Consola de MinIO | http://localhost:9001 |
-| Postgres | `localhost:5432` |
+| Postgres | `localhost:5433` (remapeado; 5432 puede estar tomado por otro proyecto local) |
 | Redis | `localhost:6379` |
-| Ollama | http://localhost:11434 |
+| Ollama (contenedor) | http://localhost:11435 (remapeado si ya tienes Ollama nativo en 11434) |
 
 Ver logs en vivo de un servicio:
 
@@ -336,6 +336,9 @@ El proyecto es **100% portable** entre máquinas con Docker + WSL2:
 ---
 
 ## Troubleshooting
+
+**`port is already allocated` al levantar `postgres` u `ollama`**
+Si ya tienes Postgres u Ollama corriendo nativamente en Windows (o de otro proyecto Docker) en los puertos por defecto (5432 / 11434), habrá conflicto. Este repo ya remapea `postgres` a `5433` y `ollama` a `11435` en el host (ver `docker-compose.yml`) precisamente por esto — la red interna entre contenedores sigue usando los puertos estándar (5432 / 11434), así que no hay que tocar `DATABASE_URL` ni `OLLAMA_HOST`. Si el conflicto persiste, revisa qué más está usando el puerto con `docker ps` (otros proyectos) o `netstat -ano | grep <puerto>` (procesos nativos de Windows) y ajusta el mapeo en `docker-compose.yml`.
 
 **`docker compose up` falla en `postgres` con "database is uninitialized"**
 Puede pasar si cambiaste `POSTGRES_USER`/`POSTGRES_PASSWORD` después de la primera vez que se creó el volumen. Solución: `docker compose down -v` (borra datos) y vuelve a levantar.

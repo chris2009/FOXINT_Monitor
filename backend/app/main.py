@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.routes import pages
+from app.api.routes import alerts, pages, posts, rules
 from app.core.config import settings
 
 app = FastAPI(title="OSINT Monitor API", version="0.1.0")
@@ -15,6 +15,9 @@ app.add_middleware(
 )
 
 app.include_router(pages.router, prefix="/api/pages", tags=["pages"])
+app.include_router(posts.router, prefix="/api")
+app.include_router(rules.router, prefix="/api/rules", tags=["rules"])
+app.include_router(alerts.router, prefix="/api/alerts", tags=["alerts"])
 
 
 @app.get("/health")
