@@ -27,6 +27,7 @@ services:
     volumes:
       - ./backend:/app
       - torchcache:/root/.cache/torch
+      - whispercache:/root/.cache/whisper
     depends_on:
       postgres:
         condition: service_healthy
@@ -45,6 +46,7 @@ services:
     volumes:
       - ./backend:/app
       - torchcache:/root/.cache/torch
+      - whispercache:/root/.cache/whisper
     depends_on:
       postgres:
         condition: service_healthy
@@ -141,3 +143,4 @@ volumes:
   miniodata:
   ollamadata:
   torchcache:  # pesos de reconocimiento facial (VGGFace2), descargados en el primer uso
+  whispercache:  # modelo de faster-whisper, descargado en el primer uso

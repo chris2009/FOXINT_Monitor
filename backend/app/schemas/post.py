@@ -11,6 +11,7 @@ class PostRead(BaseModel):
     platform_post_id: str
     type: str
     message: str | None
+    transcript: str | None
     permalink: str | None
     media_urls: list | None
     is_live: bool

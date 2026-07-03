@@ -19,6 +19,7 @@ export interface Post {
   platform_post_id: string;
   type: string;
   message: string | null;
+  transcript: string | null;
   permalink: string | null;
   media_urls: string[] | null;
   is_live: boolean;

@@ -363,11 +363,12 @@ Este proyecto se construye **incrementalmente**. Estado real al día de hoy:
 - **Extracción de entidades** (personas, lugares, organizaciones) con panel agregado y filtro de posts por entidad.
 - **Búsqueda por similitud facial** (facenet/MTCNN + VGGFace2) sobre el corpus capturado — similitud, no identificación biométrica.
 - **Ingesta multi-plataforma**: además de Facebook, conector de **YouTube** (API Data v3) — monitorea canales públicos y sus videos, que pasan por el mismo pipeline de análisis y búsqueda.
+- **Transcripción de audio/video** (faster-whisper, local, multilingüe): si un post trae un audio/video descargable, se transcribe y el texto hablado queda **buscable** (alimenta la búsqueda semántica) y visible en el timeline.
 - Alertas a Telegram cuando se dispara una regla de keyword o se detecta un live.
 - **Dashboard funcional**: registro/listado de páginas, timeline con detecciones por post, gestión de reglas, historial de alertas, búsqueda semántica y búsqueda visual.
 
 **🚧 Pendiente (próximos incrementos)**
-- Búsqueda por **audio** (transcripción S2T de videos/lives con faster-whisper).
+- **Descarga de audio de YouTube** para transcribir sus videos (requiere `yt-dlp`; la API oficial no expone el audio — ver limitaciones).
 - **OCR** de texto embebido en imágenes (`OCRAnalyzer`, EasyOCR).
 - RBAC de usuarios (admin/analyst/viewer) — el modelo `users` existe pero no hay auth implementada.
 - WebSocket de alertas en tiempo real (`/ws/alerts`).
@@ -438,6 +439,7 @@ docker compose exec ollama ollama list
 7. **Sentimiento vía LLM local**, no un modelo de clasificación entrenado específicamente — es razonablemente bueno para español pero no reemplaza un modelo fine-tuneado si se necesita alta precisión.
 8. **Sin retención/purga automática de media** todavía (mencionado en el documento como requisito legal de minimización) — pendiente de implementar.
 9. **Búsqueda visual (CLIP): peso y precisión.** Los modelos CLIP se hornean en la imagen del backend/worker (~1.5 GB extra de torch + modelos) y corren en CPU; por eso el worker usa baja concurrencia (`--concurrency=2`). La búsqueda por foto encuentra imágenes *semánticamente/visualmente parecidas*, no identifica personas ni hace reconocimiento facial biométrico (excluido por diseño, ver alcance legal). Los `score` son de similitud relativa: sirven para *rankear*, no como probabilidad absoluta.
+10. **Transcripción: de dónde sale el audio.** El motor (faster-whisper) transcribe cualquier audio/video **descargable** que el post exponga en `media_urls`. Para videos de Facebook de páginas que administras, el Graph API puede dar la URL del video. **La YouTube Data API oficial NO expone el audio/video** (solo metadatos), así que transcribir un video de YouTube requeriría descargar su media con `yt-dlp` — algo que queda **fuera del alcance "solo APIs oficiales"** y con consideraciones de ToS; por eso no está activado por defecto y se documenta como paso opt-in. La transcripción corre en CPU: en videos largos puede tardar (usa el modelo `small` por defecto; configurable con `WHISPER_MODEL`).
 
 ---
 

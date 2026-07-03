@@ -16,6 +16,7 @@ class Post(Base):
     platform_post_id: Mapped[str] = mapped_column(String, unique=True, nullable=False)
     type: Mapped[str] = mapped_column(String, nullable=False)  # status | photo | video | live
     message: Mapped[str | None] = mapped_column(String, nullable=True)
+    transcript: Mapped[str | None] = mapped_column(String, nullable=True)  # texto transcrito del audio/video
     permalink: Mapped[str | None] = mapped_column(String, nullable=True)
     media_urls: Mapped[list | None] = mapped_column(JSON, nullable=True)
     is_live: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)

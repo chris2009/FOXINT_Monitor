@@ -17,6 +17,11 @@ function PostRow({ post }: { post: Post }) {
         {post.is_live && <span className="ml-2 text-red-600 font-semibold">● LIVE</span>}
       </p>
       <p className="mt-1">{post.message ?? <em className="text-gray-400">sin texto</em>}</p>
+      {post.transcript && (
+        <div className="mt-2 text-sm bg-amber-50 border border-amber-200 rounded p-2">
+          <span className="font-medium text-amber-700">🎙️ Transcripción:</span> {post.transcript}
+        </div>
+      )}
       {post.permalink && (
         <a
           href={post.permalink}

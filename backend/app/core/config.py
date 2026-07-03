@@ -17,6 +17,11 @@ class Settings(BaseSettings):
     # YouTube Data API v3
     youtube_api_key: str = ""
 
+    # Whisper (transcripción de audio/video)
+    whisper_model: str = "small"  # tiny | base | small | medium
+    whisper_compute: str = "int8"  # int8 es eficiente en CPU
+    whisper_cache_dir: str = "/root/.cache/whisper"
+
     # Postgres
     database_url: str = "postgresql+asyncpg://osint:osint@postgres:5432/osint_monitor"
 

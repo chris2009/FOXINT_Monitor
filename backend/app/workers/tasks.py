@@ -34,10 +34,12 @@ from app.services.face_embeddings import index_faces
 from app.services.graph_api import GraphAPIClient, GraphAPIError
 from app.services.image_embeddings import embed_image
 from app.services.telegram import TelegramNotifier
+from app.services.transcription import is_transcribable_url, transcribe_media
 from app.services.youtube import YouTubeClient, YouTubeError
 from app.workers.celery_app import celery_app
 
 _MAX_IMAGE_BYTES = 10 * 1024 * 1024  # no descargar imágenes de más de 10 MB
+_MAX_MEDIA_BYTES = 80 * 1024 * 1024  # tope para audio/video a transcribir (80 MB)
 
 
 def _run_async(coro: Any) -> Any:
@@ -250,34 +252,68 @@ def process_post(post_id: int) -> None:
                 message = f"Live iniciado en {post.page.name}: {post.permalink}"
                 _dispatch_alert(db, post, message, rule=None, channels=["telegram"])
 
+        _transcribe(db, post)
         _index_embedding(db, post)
         _index_media(db, post)
         db.commit()
 
 
 def _index_embedding(db: Session, post: Post) -> None:
-    """Genera y guarda el vector semántico del post, para la búsqueda por similitud (/api/search)."""
-    if not (post.message and post.message.strip()):
+    """Genera el vector semántico del post (mensaje + transcripción) para la búsqueda (/api/search)."""
+    text = " ".join(part for part in (post.message, post.transcript) if part and part.strip()).strip()
+    if not text:
         return
     if db.scalar(select(PostEmbedding.post_id).where(PostEmbedding.post_id == post.id)):
         return  # ya indexado
 
-    vector = _run_async(embed_text(post.message[:2000]))
+    vector = _run_async(embed_text(text[:4000]))
     db.add(PostEmbedding(post_id=post.id, embedding=vector))
 
 
-def _download_image(url: str) -> bytes | None:
+def _download_bytes(url: str, max_bytes: int, timeout: float = 30.0) -> bytes | None:
     # Muchos CDNs (incl. Wikimedia) rechazan peticiones sin User-Agent con 403.
     headers = {"User-Agent": "FoxintMonitor/0.1 (OSINT monitor; local research)"}
     try:
-        response = httpx.get(url, timeout=15.0, follow_redirects=True, headers=headers)
+        response = httpx.get(url, timeout=timeout, follow_redirects=True, headers=headers)
         response.raise_for_status()
     except httpx.HTTPError:
         return None
     content = response.content
-    if not content or len(content) > _MAX_IMAGE_BYTES:
+    if not content or len(content) > max_bytes:
         return None
     return content
+
+
+def _download_image(url: str) -> bytes | None:
+    return _download_bytes(url, _MAX_IMAGE_BYTES, timeout=15.0)
+
+
+def _transcribe(db: Session, post: Post) -> None:
+    """Si el post tiene un audio/video descargable, lo transcribe y guarda el texto en post.transcript."""
+    if post.transcript:
+        return  # ya transcrito
+    media_url = next((u for u in (post.media_urls or []) if is_transcribable_url(u)), None)
+    if media_url is None:
+        return
+
+    media_bytes = _download_bytes(media_url, _MAX_MEDIA_BYTES, timeout=60.0)
+    if media_bytes is None:
+        return
+    try:
+        text, language = transcribe_media(media_bytes)
+    except Exception:
+        return  # error de decodificación/transcripción: no rompe el pipeline
+    if not text:
+        return
+
+    post.transcript = text
+    db.add(
+        Detection(
+            post_id=post.id,
+            analyzer="transcription",
+            result={"text": text, "language": language},
+        )
+    )
 
 
 def _index_media(db: Session, post: Post) -> None:

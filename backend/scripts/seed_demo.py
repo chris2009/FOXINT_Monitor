@@ -40,6 +40,8 @@ DEMO_TARGETS = [
             ("demo_img_dog", "Nuestra mascota del refugio busca un hogar.", ["https://picsum.photos/id/237/640/480"], "photo"),
             ("demo_img_soccer", "Así se vivió el partido de fútbol este fin de semana.", ["https://ultralytics.com/images/zidane.jpg"], "photo"),
             ("demo_img_bus", "Reporte de tránsito: precaución con el transporte público en la vía.", ["https://ultralytics.com/images/bus.jpg"], "photo"),
+            # Post con audio para probar la transcripción (Whisper); Whisper detecta el idioma solo.
+            ("demo_audio", "Audio de prueba para transcripción automática.", ["https://www.voiptroubleshooter.com/open_speech/american/OSR_us_000_0010_8k.wav"], "video"),
         ],
     },
     {
