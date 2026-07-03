@@ -57,6 +57,7 @@ export default function ImageSearchPage() {
       >
         {mode === "text" ? (
           <input
+            key="text-input"
             className="border rounded px-3 py-2 flex-1"
             placeholder="Ej: multitud, incendio, bandera, vehículo..."
             value={query}
@@ -64,6 +65,7 @@ export default function ImageSearchPage() {
           />
         ) : (
           <input
+            key="file-input"
             type="file"
             accept="image/*"
             className="border rounded px-3 py-2 flex-1"
