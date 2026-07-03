@@ -26,4 +26,7 @@ class Post(Base):
     page: Mapped["Page"] = relationship(back_populates="posts")
     detections: Mapped[list["Detection"]] = relationship(back_populates="post", cascade="all, delete-orphan")
     embedding: Mapped["PostEmbedding"] = relationship(back_populates="post", cascade="all, delete-orphan", uselist=False)
+    image_embeddings: Mapped[list["PostImageEmbedding"]] = relationship(
+        back_populates="post", cascade="all, delete-orphan"
+    )
     alerts: Mapped[list["Alert"]] = relationship(back_populates="post", cascade="all, delete-orphan")

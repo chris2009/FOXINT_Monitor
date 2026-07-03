@@ -50,7 +50,9 @@ services:
         condition: service_started
     networks:
       - osint-net
-    command: celery -A app.workers.celery_app worker --loglevel=info
+    # concurrency baja a propósito: cada proceso carga torch + modelos CLIP en memoria;
+    # 2 procesos es suficiente en local y evita agotar la RAM.
+    command: celery -A app.workers.celery_app worker --loglevel=info --concurrency=2
 
   beat:
     build:

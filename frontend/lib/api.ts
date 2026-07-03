@@ -60,6 +60,12 @@ export interface SearchResult {
   score: number;
 }
 
+export interface ImageSearchResult {
+  post: Post;
+  image_url: string;
+  score: number;
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${API_URL}${path}`, {
     ...init,
@@ -97,5 +103,27 @@ export const api = {
     const params = new URLSearchParams({ q });
     if (pageId !== undefined) params.set("page_id", String(pageId));
     return request<SearchResult[]>(`/api/search?${params.toString()}`);
+  },
+
+  searchImagesByText: (q: string, pageId?: number) => {
+    const params = new URLSearchParams({ q });
+    if (pageId !== undefined) params.set("page_id", String(pageId));
+    return request<ImageSearchResult[]>(`/api/search/images?${params.toString()}`);
+  },
+
+  searchImagesByImage: async (file: File, pageId?: number) => {
+    const params = new URLSearchParams();
+    if (pageId !== undefined) params.set("page_id", String(pageId));
+    const form = new FormData();
+    form.append("file", file);
+    const response = await fetch(`${API_URL}/api/search/images?${params.toString()}`, {
+      method: "POST",
+      body: form,
+    });
+    if (!response.ok) {
+      const body = await response.json().catch(() => null);
+      throw new Error(body?.detail ?? `Error ${response.status}`);
+    }
+    return (await response.json()) as ImageSearchResult[];
   },
 };

@@ -19,17 +19,35 @@ from sqlalchemy import delete, select
 from app.db.sync_session import SyncSessionLocal
 from app.models.detection import Detection
 from app.models.embedding import PostEmbedding
+from app.models.image_embedding import PostImageEmbedding
 from app.models.page import Page
 from app.models.post import Post
 from app.workers.tasks import process_post
 
 DEMO_FB_PAGE_ID = "DEMO_PAGE"
 
+# (platform_post_id, mensaje, [urls de imágenes])
 DEMO_POSTS = [
-    ("demo_post_1", "El municipio anunció la construcción de una nueva carretera y obras viales en la región."),
-    ("demo_post_2", "Gran final del campeonato de fútbol este domingo en el estadio nacional."),
-    ("demo_post_3", "Alerta sanitaria: aumentan los casos de dengue y el ministerio de salud recomienda prevención."),
-    ("demo_post_4", "Vecinos protestan por los cortes de agua que afectan a tres distritos desde hace una semana."),
+    ("demo_post_1", "El municipio anunció la construcción de una nueva carretera y obras viales en la región.", []),
+    ("demo_post_2", "Gran final del campeonato de fútbol este domingo en el estadio nacional.", []),
+    ("demo_post_3", "Alerta sanitaria: aumentan los casos de dengue y el ministerio de salud recomienda prevención.", []),
+    ("demo_post_4", "Vecinos protestan por los cortes de agua que afectan a tres distritos desde hace una semana.", []),
+    # Posts con imágenes reales para probar la búsqueda visual (fuentes que permiten hotlinking):
+    (
+        "demo_img_dog",
+        "Nuestra mascota del refugio busca un hogar.",
+        ["https://picsum.photos/id/237/640/480"],
+    ),
+    (
+        "demo_img_soccer",
+        "Así se vivió el partido de fútbol este fin de semana.",
+        ["https://ultralytics.com/images/zidane.jpg"],
+    ),
+    (
+        "demo_img_bus",
+        "Reporte de tránsito: precaución con el transporte público en la vía.",
+        ["https://ultralytics.com/images/bus.jpg"],
+    ),
 ]
 
 
@@ -43,6 +61,7 @@ def clean() -> None:
         post_ids = list(db.scalars(select(Post.id).where(Post.page_id == page.id)))
         if post_ids:
             db.execute(delete(PostEmbedding).where(PostEmbedding.post_id.in_(post_ids)))
+            db.execute(delete(PostImageEmbedding).where(PostImageEmbedding.post_id.in_(post_ids)))
             db.execute(delete(Detection).where(Detection.post_id.in_(post_ids)))
             db.execute(delete(Post).where(Post.id.in_(post_ids)))
         db.delete(page)
@@ -65,10 +84,16 @@ def seed() -> None:
             db.commit()
             db.refresh(page)
 
-        for platform_post_id, message in DEMO_POSTS:
+        for platform_post_id, message, media_urls in DEMO_POSTS:
             if db.scalar(select(Post.id).where(Post.platform_post_id == platform_post_id)):
                 continue
-            post = Post(page_id=page.id, platform_post_id=platform_post_id, type="status", message=message)
+            post = Post(
+                page_id=page.id,
+                platform_post_id=platform_post_id,
+                type="photo" if media_urls else "status",
+                message=message,
+                media_urls=media_urls or None,
+            )
             db.add(post)
             db.commit()
             db.refresh(post)
@@ -78,9 +103,11 @@ def seed() -> None:
 
     for post_id in new_ids:
         process_post(post_id)
-        print(f"  analizado post {post_id} (sentimiento + embedding)")
+        print(f"  analizado post {post_id} (sentimiento + embedding + imágenes)")
 
-    print("Listo. Prueba la búsqueda: http://localhost:8000/api/search?q=epidemias")
+    print("Listo.")
+    print("  Búsqueda de texto:   http://localhost:8000/api/search?q=epidemias")
+    print("  Búsqueda visual:     http://localhost:8000/api/search/images?q=perro")
 
 
 if __name__ == "__main__":

@@ -15,6 +15,7 @@ import asyncio
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
+import httpx
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -23,13 +24,17 @@ from app.db.sync_session import SyncSessionLocal
 from app.models.alert import Alert
 from app.models.detection import Detection
 from app.models.embedding import PostEmbedding
+from app.models.image_embedding import PostImageEmbedding
 from app.models.keyword_rule import KeywordRule
 from app.models.page import Page
 from app.models.post import Post
 from app.services.embeddings import embed_text
 from app.services.graph_api import GraphAPIClient, GraphAPIError
+from app.services.image_embeddings import embed_image
 from app.services.telegram import TelegramNotifier
 from app.workers.celery_app import celery_app
+
+_MAX_IMAGE_BYTES = 10 * 1024 * 1024  # no descargar imágenes de más de 10 MB
 
 
 def _run_async(coro: Any) -> Any:
@@ -197,6 +202,7 @@ def process_post(post_id: int) -> None:
                 _dispatch_alert(db, post, message, rule=None, channels=["telegram"])
 
         _index_embedding(db, post)
+        _index_image_embeddings(db, post)
         db.commit()
 
 
@@ -209,3 +215,37 @@ def _index_embedding(db: Session, post: Post) -> None:
 
     vector = _run_async(embed_text(post.message[:2000]))
     db.add(PostEmbedding(post_id=post.id, embedding=vector))
+
+
+def _download_image(url: str) -> bytes | None:
+    # Muchos CDNs (incl. Wikimedia) rechazan peticiones sin User-Agent con 403.
+    headers = {"User-Agent": "FoxintMonitor/0.1 (OSINT monitor; local research)"}
+    try:
+        response = httpx.get(url, timeout=15.0, follow_redirects=True, headers=headers)
+        response.raise_for_status()
+    except httpx.HTTPError:
+        return None
+    content = response.content
+    if not content or len(content) > _MAX_IMAGE_BYTES:
+        return None
+    return content
+
+
+def _index_image_embeddings(db: Session, post: Post) -> None:
+    """Descarga y embebe (CLIP) cada imagen del post, para la búsqueda visual (/api/search/images)."""
+    for url in post.media_urls or []:
+        if db.scalar(
+            select(PostImageEmbedding.id).where(
+                PostImageEmbedding.post_id == post.id, PostImageEmbedding.image_url == url
+            )
+        ):
+            continue  # ya indexada
+
+        image_bytes = _download_image(url)
+        if image_bytes is None:
+            continue
+        try:
+            vector = embed_image(image_bytes)
+        except Exception:
+            continue  # imagen corrupta o formato no soportado: se omite sin romper la tarea
+        db.add(PostImageEmbedding(post_id=post.id, image_url=url, embedding=vector))

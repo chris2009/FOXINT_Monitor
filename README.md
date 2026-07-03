@@ -62,7 +62,7 @@ Facebook Pages (Graph API)
 | Cola de tareas / scheduler | Celery + Celery Beat + Redis |
 | Base de datos | PostgreSQL 16 + pgvector (búsqueda semántica) |
 | Media local | MinIO (S3-compatible) |
-| IA local | Ollama (LLM para sentimiento + `nomic-embed-text` para embeddings) |
+| IA local | Ollama (LLM para sentimiento + `nomic-embed-text` para embeddings de texto) + CLIP (`sentence-transformers`, embeddings de imagen) |
 | Alertas | Telegram Bot API |
 | Orquestación | Docker Compose sobre WSL2 |
 
@@ -238,20 +238,25 @@ Ideal para ver el dashboard, el análisis de sentimiento y la búsqueda semánti
    docker compose exec backend python -m scripts.seed_demo
    ```
 
-   Verás algo como `Insertados 4 posts demo...` y `analizado post N (sentimiento + embedding)`.
+   Verás `Insertados 7 posts demo...` y `analizado post N (sentimiento + embedding + imágenes)`. Incluye 3 posts con **imágenes reales** (un perro, un partido de fútbol, un autobús) para probar la búsqueda visual — la primera vez tarda un poco más porque descarga las imágenes y carga el modelo CLIP.
 
 2. **Abre el dashboard** en [http://localhost:3000](http://localhost:3000). Deberías ver:
    - En **Páginas**: la "Página demo (seed)". Haz clic para ver su **timeline** con los posts y sus detecciones de sentimiento.
-   - En **Búsqueda**: escribe una consulta *por significado*, no por palabra exacta. Ejemplos que funcionan:
+   - En **Búsqueda** (semántica de texto): escribe una consulta *por significado*, no por palabra exacta. Ejemplos:
      - `epidemias` → encuentra el post sobre dengue.
      - `deportes` → encuentra el post sobre fútbol.
      - `reclamos de la población` → encuentra el post sobre las protestas por el agua.
+   - En **Búsqueda visual**: busca dentro del *contenido de las imágenes*, en dos modos:
+     - *Por texto*: escribe `un perro`, `jugadores de deporte` o `un autobús en la calle` → encuentra la foto correspondiente aunque el texto del post no lo diga.
+     - *Por imagen*: sube una foto de referencia (ej. cualquier imagen de un autobús) → encuentra los posts con imágenes visualmente similares.
    - En **Reglas**: crea una regla (ej. etiqueta `Protesta`, keywords `protesta, cortes`) para tenerla lista.
 
-3. **Probar la búsqueda por API** directamente (opcional):
+3. **Probar las búsquedas por API** directamente (opcional):
 
    ```bash
-   curl "http://localhost:8000/api/search?q=protestas%20sociales"
+   curl "http://localhost:8000/api/search?q=protestas%20sociales"          # semántica de texto
+   curl "http://localhost:8000/api/search/images?q=un%20perro"             # texto → imagen
+   curl -X POST "http://localhost:8000/api/search/images" -F "file=@foto.jpg"  # imagen → imagen
    ```
 
    Cada resultado trae un `score` (similitud); el más relevante va primero.
@@ -311,10 +316,11 @@ docker compose exec ollama ollama list      # deben aparecer qwen2.5 y nomic-emb
 2. El sistema **valida automáticamente** que sea una Página pública (nunca un perfil).
 3. **Celery Beat** revisa cada 60s qué páginas ya cumplieron su `poll_interval` individual y encola su polling.
 4. El **worker** llama a `/posts` + `/live_videos` de la Graph API, **deduplica** contra lo ya visto, y guarda los posts nuevos.
-5. Cada post nuevo pasa por el **bus de analizadores**: `KeywordAnalyzer` (reglas que definas), `SentimentAnalyzer` (Ollama), `LiveDetector` (marca lives en curso). Además se **indexa su embedding** (`nomic-embed-text`) en `post_embeddings` para la búsqueda semántica.
+5. Cada post nuevo pasa por el **bus de analizadores**: `KeywordAnalyzer` (reglas que definas), `SentimentAnalyzer` (Ollama), `LiveDetector` (marca lives en curso). Además se **indexa su embedding de texto** (`nomic-embed-text`) y, por cada imagen del post, su **embedding visual** (CLIP) para las búsquedas.
 6. Si una regla de keyword coincide, o se detecta un live iniciado, se dispara una **alerta a Telegram** y queda registrada en la tabla `alerts`.
 7. El **dashboard** muestra el timeline de posts por página, sus detecciones y el historial de alertas.
-8. La **búsqueda semántica** (`/api/search` o la pestaña "Búsqueda") permite consultar por significado sobre todos los posts capturados — por ejemplo "epidemias" encuentra un post sobre dengue aunque no use esa palabra. Se puede acotar a una página o buscar en todas.
+8. La **búsqueda semántica de texto** (`/api/search` o la pestaña "Búsqueda") consulta por significado sobre el texto de los posts — "epidemias" encuentra un post sobre dengue aunque no use esa palabra.
+9. La **búsqueda visual** (`/api/search/images` o la pestaña "Búsqueda visual") consulta el *contenido de las imágenes*, por texto ("un autobús") o subiendo una imagen de referencia (encuentra fotos parecidas). Ambas se pueden acotar a una página o buscar en todas.
 
 ---
 
@@ -326,17 +332,18 @@ Este proyecto se construye **incrementalmente**. Estado real al día de hoy:
 - Monorepo (frontend Next.js 15 + backend FastAPI) y Docker Compose con los 8 servicios.
 - Esquema completo de base de datos (7 tablas) + migraciones Alembic (incluye extensión `pgvector`).
 - Cliente Graph API async con **validación Página/Perfil** integrada en el endpoint de registro.
-- Endpoints REST: páginas, posts, detecciones, reglas de keywords, alertas y **búsqueda semántica** (`/api/search`).
+- Endpoints REST: páginas, posts, detecciones, reglas de keywords, alertas, **búsqueda semántica** (`/api/search`) y **búsqueda visual** (`/api/search/images`).
 - Scheduler de polling (Celery Beat) que respeta el `poll_interval` configurado por página.
 - Deduplicador de posts (contra `platform_post_id`).
 - Bus de analizadores con **auto-discovery**: `KeywordAnalyzer`, `SentimentAnalyzer` (Ollama), `LiveDetector`.
-- **Indexado de embeddings** (`nomic-embed-text`) por post + **búsqueda semántica** con pgvector (índice HNSW coseno).
+- **Indexado de embeddings de texto** (`nomic-embed-text`) e **imagen** (CLIP) por post, con búsqueda pgvector (índices HNSW coseno).
+- **Búsqueda semántica de texto** + **búsqueda visual** (texto→imagen e imagen→imagen) con CLIP multilingüe.
 - Alertas a Telegram cuando se dispara una regla de keyword o se detecta un live.
-- **Dashboard funcional**: registro/listado de páginas, timeline con detecciones por post, gestión de reglas, historial de alertas y búsqueda semántica.
+- **Dashboard funcional**: registro/listado de páginas, timeline con detecciones por post, gestión de reglas, historial de alertas, búsqueda semántica y búsqueda visual.
 
 **🚧 Pendiente (próximos incrementos)**
-- Búsqueda por **imagen** (embeddings de imagen + OCR) y por **audio** (transcripción S2T de VODs de lives).
-- Analizadores de Fase 2: `NERAnalyzer` (spaCy), `OCRAnalyzer` (EasyOCR).
+- **OCR** de texto embebido en imágenes (`OCRAnalyzer`, EasyOCR) y **NER** de entidades (`NERAnalyzer`, spaCy).
+- Búsqueda por **audio** (transcripción S2T de VODs de lives con faster-whisper).
 - RBAC de usuarios (admin/analyst/viewer) — el modelo `users` existe pero no hay auth implementada.
 - WebSocket de alertas en tiempo real (`/ws/alerts`).
 - Reportes exportables (PDF/CSV).
@@ -405,6 +412,7 @@ docker compose exec ollama ollama list
 6. **Sin autenticación/RBAC todavía.** El modelo `users` existe pero cualquiera con acceso a la red donde corre el dashboard puede usar la API tal cual está hoy. No exponer estos puertos a internet sin agregar auth.
 7. **Sentimiento vía LLM local**, no un modelo de clasificación entrenado específicamente — es razonablemente bueno para español pero no reemplaza un modelo fine-tuneado si se necesita alta precisión.
 8. **Sin retención/purga automática de media** todavía (mencionado en el documento como requisito legal de minimización) — pendiente de implementar.
+9. **Búsqueda visual (CLIP): peso y precisión.** Los modelos CLIP se hornean en la imagen del backend/worker (~1.5 GB extra de torch + modelos) y corren en CPU; por eso el worker usa baja concurrencia (`--concurrency=2`). La búsqueda por foto encuentra imágenes *semánticamente/visualmente parecidas*, no identifica personas ni hace reconocimiento facial biométrico (excluido por diseño, ver alcance legal). Los `score` son de similitud relativa: sirven para *rankear*, no como probabilidad absoluta.
 
 ---
 
