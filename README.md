@@ -23,14 +23,15 @@ Plataforma local de monitoreo de **páginas públicas** de redes sociales (Faceb
 4. [Instalación paso a paso](#instalación-paso-a-paso)
 5. [Levantar el proyecto](#levantar-el-proyecto)
 6. [Verificar que todo funciona](#verificar-que-todo-funciona)
-7. [Uso de la plataforma](#uso-de-la-plataforma)
-8. [Funcionalidades implementadas (estado actual)](#funcionalidades-implementadas-estado-actual)
-9. [Variables de entorno](#variables-de-entorno)
-10. [Comandos útiles](#comandos-útiles)
-11. [Limitaciones conocidas](#limitaciones-conocidas)
-12. [Migrar a otro entorno local](#migrar-a-otro-entorno-local)
-13. [Troubleshooting](#troubleshooting)
-14. [Roadmap](#roadmap)
+7. [Cómo probar la plataforma](#cómo-probar-la-plataforma)
+8. [Uso de la plataforma](#uso-de-la-plataforma)
+9. [Funcionalidades implementadas (estado actual)](#funcionalidades-implementadas-estado-actual)
+10. [Variables de entorno](#variables-de-entorno)
+11. [Comandos útiles](#comandos-útiles)
+12. [Limitaciones conocidas](#limitaciones-conocidas)
+13. [Migrar a otro entorno local](#migrar-a-otro-entorno-local)
+14. [Troubleshooting](#troubleshooting)
+15. [Roadmap](#roadmap)
 
 ---
 
@@ -217,6 +218,89 @@ Listar páginas registradas:
 
 ```bash
 curl http://localhost:8000/api/pages
+```
+
+---
+
+## Cómo probar la plataforma
+
+Hay dos formas de probarla, según si ya tienes credenciales de Meta o no. **Empieza por la Opción A** para ver todo el sistema funcionando en 1 minuto sin necesitar token.
+
+### Opción A — Prueba rápida con datos de demostración (sin credenciales de Meta)
+
+Ideal para ver el dashboard, el análisis de sentimiento y la búsqueda semántica funcionando de inmediato. Un script siembra una página ficticia con varios posts de temas distintos y los pasa por el bus de analizadores.
+
+**Requisito previo:** los servicios levantados (`docker compose up -d`) y los modelos de Ollama descargados (ver sección de instalación).
+
+1. **Sembrar los datos demo** (crea la página `DEMO_PAGE` + posts y los analiza):
+
+   ```bash
+   docker compose exec backend python -m scripts.seed_demo
+   ```
+
+   Verás algo como `Insertados 4 posts demo...` y `analizado post N (sentimiento + embedding)`.
+
+2. **Abre el dashboard** en [http://localhost:3000](http://localhost:3000). Deberías ver:
+   - En **Páginas**: la "Página demo (seed)". Haz clic para ver su **timeline** con los posts y sus detecciones de sentimiento.
+   - En **Búsqueda**: escribe una consulta *por significado*, no por palabra exacta. Ejemplos que funcionan:
+     - `epidemias` → encuentra el post sobre dengue.
+     - `deportes` → encuentra el post sobre fútbol.
+     - `reclamos de la población` → encuentra el post sobre las protestas por el agua.
+   - En **Reglas**: crea una regla (ej. etiqueta `Protesta`, keywords `protesta, cortes`) para tenerla lista.
+
+3. **Probar la búsqueda por API** directamente (opcional):
+
+   ```bash
+   curl "http://localhost:8000/api/search?q=protestas%20sociales"
+   ```
+
+   Cada resultado trae un `score` (similitud); el más relevante va primero.
+
+4. **Limpiar los datos demo** cuando termines:
+
+   ```bash
+   docker compose exec backend python -m scripts.seed_demo --clean
+   ```
+
+> El script es **solo para pruebas locales**: crea una página ficticia marcada con `fb_page_id='DEMO_PAGE'`. No representa datos reales de Facebook.
+
+### Opción B — Prueba real con una página de Facebook (requiere token de Meta)
+
+Esto ejercita el flujo completo de verdad: validación Página/Perfil, polling automático y captura de posts reales.
+
+**Requisito previo:** un `FB_ACCESS_TOKEN` válido en tu `.env` (Page Access Token de una app de Meta for Developers; ver [Requisitos previos](#requisitos-previos) y la sección 2.4 de `PROYECTO_OSINT_MONITOR.md`). Tras editar `.env`, recrea los servicios que lo usan:
+
+```bash
+docker compose up -d --force-recreate backend worker beat
+```
+
+1. **Registrar una página pública** (usa el ID de una Página real que tu app pueda leer):
+
+   ```bash
+   curl -X POST http://localhost:8000/api/pages \
+     -H "Content-Type: application/json" \
+     -d '{"fb_page_id": "ID_DE_LA_PAGINA", "poll_interval": 300}'
+   ```
+
+   - Página pública válida → `201` con `name`, `category`, `fan_count`.
+   - Perfil personal o ID inválido → `422` con el motivo del rechazo (esta es la barrera legal en acción).
+
+   También puedes hacerlo desde el dashboard, pestaña **Páginas**.
+
+2. **Esperar al scheduler.** Celery Beat revisa cada 60s qué páginas cumplieron su `poll_interval`. Cuando le toque, el worker consultará la Graph API y capturará los posts. Observa el proceso en vivo:
+
+   ```bash
+   docker compose logs -f beat worker
+   ```
+
+3. **Ver los resultados.** Los posts capturados aparecen en el timeline de la página (dashboard), con su análisis de sentimiento, y quedan disponibles para la búsqueda semántica. Si creaste una regla de keyword que coincide con algún post, se registrará una alerta (y se enviará a Telegram si configuraste el bot).
+
+### Verificar el estado de los servicios
+
+```bash
+docker compose ps          # todos deben estar "Up"; postgres "healthy"
+curl http://localhost:8000/health          # {"status":"ok"}
+docker compose exec ollama ollama list      # deben aparecer qwen2.5 y nomic-embed-text
 ```
 
 ---
