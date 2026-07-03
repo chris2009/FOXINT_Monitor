@@ -28,10 +28,10 @@ DEMO_FB_PAGE_ID = "DEMO_PAGE"
 
 # (platform_post_id, mensaje, [urls de imágenes])
 DEMO_POSTS = [
-    ("demo_post_1", "El municipio anunció la construcción de una nueva carretera y obras viales en la región.", []),
-    ("demo_post_2", "Gran final del campeonato de fútbol este domingo en el estadio nacional.", []),
-    ("demo_post_3", "Alerta sanitaria: aumentan los casos de dengue y el ministerio de salud recomienda prevención.", []),
-    ("demo_post_4", "Vecinos protestan por los cortes de agua que afectan a tres distritos desde hace una semana.", []),
+    ("demo_post_1", "La Municipalidad de Trujillo anunció la construcción de una nueva carretera hacia Laredo.", []),
+    ("demo_post_2", "La ONPE informó los resultados oficiales de las elecciones generales en Lima y Arequipa.", []),
+    ("demo_post_3", "El Ministerio de Salud y el hospital Loayza alertan por el aumento de casos de dengue en Piura.", []),
+    ("demo_post_4", "Vecinos de San Juan de Lurigancho protestan por los cortes de agua de Sedapal.", []),
     # Posts con imágenes reales para probar la búsqueda visual (fuentes que permiten hotlinking):
     (
         "demo_img_dog",

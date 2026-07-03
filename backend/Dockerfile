@@ -22,6 +22,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 #   clip-ViT-B-32-multilingual-v1 -> encoder de texto multilingüe alineado (español incluido)
 RUN python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('clip-ViT-B-32'); SentenceTransformer('clip-ViT-B-32-multilingual-v1')"
 
+# Modelo de NER en español para el analizador de entidades (personas, lugares, organizaciones).
+RUN python -m spacy download es_core_news_md
+
 COPY . .
 
 EXPOSE 8000

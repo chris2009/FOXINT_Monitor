@@ -249,6 +249,7 @@ Ideal para ver el dashboard, el análisis de sentimiento y la búsqueda semánti
    - En **Búsqueda visual**: busca dentro del *contenido de las imágenes*, en dos modos:
      - *Por texto*: escribe `un perro`, `jugadores de deporte` o `un autobús en la calle` → encuentra la foto correspondiente aunque el texto del post no lo diga.
      - *Por imagen*: sube una foto de referencia (ej. cualquier imagen de un autobús) → encuentra los posts con imágenes visualmente similares.
+   - En **Entidades**: verás las personas, lugares y organizaciones detectadas automáticamente (`ONPE`, `Ministerio de Salud`, `Trujillo`, `Lima`…). Haz clic en una para ver los posts que la mencionan.
    - En **Reglas**: crea una regla (ej. etiqueta `Protesta`, keywords `protesta, cortes`) para tenerla lista.
 
 3. **Probar las búsquedas por API** directamente (opcional):
@@ -316,11 +317,12 @@ docker compose exec ollama ollama list      # deben aparecer qwen2.5 y nomic-emb
 2. El sistema **valida automáticamente** que sea una Página pública (nunca un perfil).
 3. **Celery Beat** revisa cada 60s qué páginas ya cumplieron su `poll_interval` individual y encola su polling.
 4. El **worker** llama a `/posts` + `/live_videos` de la Graph API, **deduplica** contra lo ya visto, y guarda los posts nuevos.
-5. Cada post nuevo pasa por el **bus de analizadores**: `KeywordAnalyzer` (reglas que definas), `SentimentAnalyzer` (Ollama), `LiveDetector` (marca lives en curso). Además se **indexa su embedding de texto** (`nomic-embed-text`) y, por cada imagen del post, su **embedding visual** (CLIP) para las búsquedas.
+5. Cada post nuevo pasa por el **bus de analizadores**: `KeywordAnalyzer` (reglas que definas), `SentimentAnalyzer` (Ollama), `NERAnalyzer` (entidades con spaCy), `LiveDetector` (marca lives en curso). Además se **indexa su embedding de texto** (`nomic-embed-text`) y, por cada imagen del post, su **embedding visual** (CLIP) para las búsquedas.
 6. Si una regla de keyword coincide, o se detecta un live iniciado, se dispara una **alerta a Telegram** y queda registrada en la tabla `alerts`.
 7. El **dashboard** muestra el timeline de posts por página, sus detecciones y el historial de alertas.
 8. La **búsqueda semántica de texto** (`/api/search` o la pestaña "Búsqueda") consulta por significado sobre el texto de los posts — "epidemias" encuentra un post sobre dengue aunque no use esa palabra.
 9. La **búsqueda visual** (`/api/search/images` o la pestaña "Búsqueda visual") consulta el *contenido de las imágenes*, por texto ("un autobús") o subiendo una imagen de referencia (encuentra fotos parecidas). Ambas se pueden acotar a una página o buscar en todas.
+10. El panel de **Entidades** (`/api/entities` o la pestaña "Entidades") lista las personas, lugares y organizaciones que el NER encontró automáticamente en los posts, con su conteo; al hacer clic en una entidad se ven los posts que la mencionan (como el panel de filtros de INTELION).
 
 ---
 
@@ -335,15 +337,18 @@ Este proyecto se construye **incrementalmente**. Estado real al día de hoy:
 - Endpoints REST: páginas, posts, detecciones, reglas de keywords, alertas, **búsqueda semántica** (`/api/search`) y **búsqueda visual** (`/api/search/images`).
 - Scheduler de polling (Celery Beat) que respeta el `poll_interval` configurado por página.
 - Deduplicador de posts (contra `platform_post_id`).
-- Bus de analizadores con **auto-discovery**: `KeywordAnalyzer`, `SentimentAnalyzer` (Ollama), `LiveDetector`.
+- Bus de analizadores con **auto-discovery**: `KeywordAnalyzer`, `SentimentAnalyzer` (Ollama), `NERAnalyzer` (spaCy), `LiveDetector`.
 - **Indexado de embeddings de texto** (`nomic-embed-text`) e **imagen** (CLIP) por post, con búsqueda pgvector (índices HNSW coseno).
 - **Búsqueda semántica de texto** + **búsqueda visual** (texto→imagen e imagen→imagen) con CLIP multilingüe.
+- **Extracción de entidades** (personas, lugares, organizaciones) con panel agregado y filtro de posts por entidad.
 - Alertas a Telegram cuando se dispara una regla de keyword o se detecta un live.
 - **Dashboard funcional**: registro/listado de páginas, timeline con detecciones por post, gestión de reglas, historial de alertas, búsqueda semántica y búsqueda visual.
 
 **🚧 Pendiente (próximos incrementos)**
-- **OCR** de texto embebido en imágenes (`OCRAnalyzer`, EasyOCR) y **NER** de entidades (`NERAnalyzer`, spaCy).
-- Búsqueda por **audio** (transcripción S2T de VODs de lives con faster-whisper).
+- **Similitud facial** sobre el corpus (detección + embedding de caras).
+- Búsqueda por **audio** (transcripción S2T de videos/lives con faster-whisper).
+- **OCR** de texto embebido en imágenes (`OCRAnalyzer`, EasyOCR).
+- **YouTube** como fuente de ingesta adicional (nuevo conector).
 - RBAC de usuarios (admin/analyst/viewer) — el modelo `users` existe pero no hay auth implementada.
 - WebSocket de alertas en tiempo real (`/ws/alerts`).
 - Reportes exportables (PDF/CSV).

@@ -4,6 +4,7 @@ const links = [
   { href: "/", label: "Páginas" },
   { href: "/search", label: "Búsqueda" },
   { href: "/search/images", label: "Búsqueda visual" },
+  { href: "/entities", label: "Entidades" },
   { href: "/rules", label: "Reglas" },
   { href: "/alerts", label: "Alertas" },
 ];

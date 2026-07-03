@@ -66,6 +66,12 @@ export interface ImageSearchResult {
   score: number;
 }
 
+export interface EntityCount {
+  text: string;
+  type: string;
+  count: number;
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${API_URL}${path}`, {
     ...init,
@@ -104,6 +110,14 @@ export const api = {
     if (pageId !== undefined) params.set("page_id", String(pageId));
     return request<SearchResult[]>(`/api/search?${params.toString()}`);
   },
+
+  listEntities: (entityType?: string) => {
+    const params = new URLSearchParams();
+    if (entityType) params.set("entity_type", entityType);
+    return request<EntityCount[]>(`/api/entities?${params.toString()}`);
+  },
+  postsForEntity: (text: string) =>
+    request<Post[]>(`/api/entities/posts?text=${encodeURIComponent(text)}`),
 
   searchImagesByText: (q: string, pageId?: number) => {
     const params = new URLSearchParams({ q });
