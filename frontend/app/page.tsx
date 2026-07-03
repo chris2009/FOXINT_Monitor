@@ -8,6 +8,7 @@ import { api } from "@/lib/api";
 export default function PagesDashboard() {
   const queryClient = useQueryClient();
   const [fbPageId, setFbPageId] = useState("");
+  const [platform, setPlatform] = useState("facebook");
   const [pollInterval, setPollInterval] = useState(300);
   const [error, setError] = useState<string | null>(null);
 
@@ -23,23 +24,36 @@ export default function PagesDashboard() {
     onError: (err: Error) => setError(err.message),
   });
 
+  const placeholder =
+    platform === "youtube"
+      ? "URL, @handle o ID del canal de YouTube"
+      : "ID de la página de Facebook";
+
   return (
     <main className="min-h-screen p-8 max-w-4xl mx-auto">
-      <h1 className="text-2xl font-semibold mb-1">Páginas monitoreadas</h1>
+      <h1 className="text-2xl font-semibold mb-1">Objetivos monitoreados</h1>
       <p className="text-gray-500 mb-6">
-        Solo se aceptan Páginas públicas de Facebook — los perfiles personales se rechazan automáticamente.
+        Facebook: solo Páginas públicas (los perfiles se rechazan). YouTube: canales públicos.
       </p>
 
       <form
         className="flex gap-2 mb-2"
         onSubmit={(e) => {
           e.preventDefault();
-          registerMutation.mutate({ fb_page_id: fbPageId, poll_interval: pollInterval });
+          registerMutation.mutate({ fb_page_id: fbPageId, platform, poll_interval: pollInterval });
         }}
       >
+        <select
+          className="border rounded px-3 py-2"
+          value={platform}
+          onChange={(e) => setPlatform(e.target.value)}
+        >
+          <option value="facebook">Facebook</option>
+          <option value="youtube">YouTube</option>
+        </select>
         <input
           className="border rounded px-3 py-2 flex-1"
-          placeholder="ID de la página de Facebook"
+          placeholder={placeholder}
           value={fbPageId}
           onChange={(e) => setFbPageId(e.target.value)}
           required
@@ -69,11 +83,21 @@ export default function PagesDashboard() {
         {pagesQuery.data?.map((page) => (
           <li key={page.id} className="p-4 flex justify-between items-center">
             <div>
-              <Link href={`/pages/${page.id}`} className="font-medium hover:underline">
-                {page.name}
-              </Link>
+              <span className="flex items-center gap-2">
+                <Link href={`/pages/${page.id}`} className="font-medium hover:underline">
+                  {page.name}
+                </Link>
+                <span
+                  className={`text-xs px-2 py-0.5 rounded ${
+                    page.platform === "youtube" ? "bg-red-100 text-red-700" : "bg-blue-100 text-blue-700"
+                  }`}
+                >
+                  {page.platform}
+                </span>
+              </span>
               <p className="text-sm text-gray-500">
-                {page.category} · {page.fan_count ?? "?"} fans · cada {page.poll_interval}s
+                {page.category} · {(page.followers_count ?? page.fan_count) ?? "?"} seguidores · cada{" "}
+                {page.poll_interval}s
               </p>
             </div>
             <span

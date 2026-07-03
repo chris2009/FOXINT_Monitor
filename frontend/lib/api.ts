@@ -98,7 +98,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 export const api = {
   listPages: () => request<Page[]>("/api/pages"),
-  registerPage: (payload: { fb_page_id: string; poll_interval?: number }) =>
+  registerPage: (payload: { fb_page_id: string; platform?: string; poll_interval?: number }) =>
     request<Page>("/api/pages", { method: "POST", body: JSON.stringify(payload) }),
 
   listPosts: (pageId: number) => request<Post[]>(`/api/pages/${pageId}/posts`),

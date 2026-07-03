@@ -4,7 +4,8 @@ from pydantic import BaseModel, ConfigDict
 
 
 class PageCreate(BaseModel):
-    fb_page_id: str
+    fb_page_id: str  # ID/handle/URL del objetivo (página de Facebook o canal de YouTube)
+    platform: str = "facebook"  # facebook | youtube
     poll_interval: int = 300
 
 

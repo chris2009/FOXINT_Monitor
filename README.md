@@ -302,6 +302,24 @@ docker compose up -d --force-recreate backend worker beat
 
 3. **Ver los resultados.** Los posts capturados aparecen en el timeline de la página (dashboard), con su análisis de sentimiento, y quedan disponibles para la búsqueda semántica. Si creaste una regla de keyword que coincide con algún post, se registrará una alerta (y se enviará a Telegram si configuraste el bot).
 
+### Opción C — Monitorear un canal de YouTube (requiere API key de Google, gratis y sin revisión)
+
+A diferencia del token de Meta, la API key de YouTube se saca en ~2 minutos y **no requiere App Review ni verificación**:
+
+1. Entra a [Google Cloud Console](https://console.cloud.google.com/) → crea un proyecto.
+2. *APIs & Services → Library →* busca **YouTube Data API v3** → **Enable**.
+3. *APIs & Services → Credentials → Create Credentials → API key*. Copia la key.
+4. Ponla en tu `.env`: `YOUTUBE_API_KEY=tu_key` y recrea: `docker compose up -d --force-recreate backend worker beat`.
+5. Registra un canal (dashboard, selector **YouTube**, o por API). Acepta ID, `@handle` o URL:
+
+   ```bash
+   curl -X POST http://localhost:8000/api/pages \
+     -H "Content-Type: application/json" \
+     -d '{"platform": "youtube", "fb_page_id": "@nombreDelCanal", "poll_interval": 300}'
+   ```
+
+   El sistema resuelve el canal público y, en cada poll, trae sus videos recientes (título, descripción, miniatura), que pasan por el mismo pipeline (sentimiento, entidades, búsquedas de texto/imagen/facial sobre la miniatura).
+
 ### Verificar el estado de los servicios
 
 ```bash
@@ -344,13 +362,13 @@ Este proyecto se construye **incrementalmente**. Estado real al día de hoy:
 - **Búsqueda semántica de texto** + **búsqueda visual** (texto→imagen e imagen→imagen) con CLIP multilingüe.
 - **Extracción de entidades** (personas, lugares, organizaciones) con panel agregado y filtro de posts por entidad.
 - **Búsqueda por similitud facial** (facenet/MTCNN + VGGFace2) sobre el corpus capturado — similitud, no identificación biométrica.
+- **Ingesta multi-plataforma**: además de Facebook, conector de **YouTube** (API Data v3) — monitorea canales públicos y sus videos, que pasan por el mismo pipeline de análisis y búsqueda.
 - Alertas a Telegram cuando se dispara una regla de keyword o se detecta un live.
 - **Dashboard funcional**: registro/listado de páginas, timeline con detecciones por post, gestión de reglas, historial de alertas, búsqueda semántica y búsqueda visual.
 
 **🚧 Pendiente (próximos incrementos)**
 - Búsqueda por **audio** (transcripción S2T de videos/lives con faster-whisper).
 - **OCR** de texto embebido en imágenes (`OCRAnalyzer`, EasyOCR).
-- **YouTube** como fuente de ingesta adicional (nuevo conector).
 - RBAC de usuarios (admin/analyst/viewer) — el modelo `users` existe pero no hay auth implementada.
 - WebSocket de alertas en tiempo real (`/ws/alerts`).
 - Reportes exportables (PDF/CSV).

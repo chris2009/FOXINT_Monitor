@@ -34,6 +34,7 @@ from app.services.face_embeddings import index_faces
 from app.services.graph_api import GraphAPIClient, GraphAPIError
 from app.services.image_embeddings import embed_image
 from app.services.telegram import TelegramNotifier
+from app.services.youtube import YouTubeClient, YouTubeError
 from app.workers.celery_app import celery_app
 
 _MAX_IMAGE_BYTES = 10 * 1024 * 1024  # no descargar imágenes de más de 10 MB
@@ -78,6 +79,11 @@ async def _fetch_page_content(fb_page_id: str) -> tuple[list[dict[str, Any]], li
     return posts, live_videos
 
 
+async def _fetch_youtube_videos(channel_id: str) -> list[dict[str, Any]]:
+    async with YouTubeClient() as client:
+        return await client.get_recent_videos(channel_id)
+
+
 def _dispatch_alert(
     db: Session,
     post: Post,
@@ -104,62 +110,103 @@ def dispatch_due_pages() -> None:
                 poll_page.delay(page.id)
 
 
+def _ingest_facebook(db: Session, page: Page) -> list[int]:
+    new_post_ids: list[int] = []
+    try:
+        posts_data, live_data = _run_async(_fetch_page_content(page.fb_page_id))
+    except GraphAPIError:
+        return []  # el próximo tick reintenta; el rate-limit ya lo detecta el cliente
+
+    live_by_id = {item["id"]: item for item in live_data}
+
+    for item in posts_data:
+        platform_post_id = item["id"]
+        if db.scalar(select(Post.id).where(Post.platform_post_id == platform_post_id)):
+            continue  # deduplicador: ya visto
+
+        live_info = live_by_id.get(platform_post_id)
+        post = Post(
+            page_id=page.id,
+            platform_post_id=platform_post_id,
+            type="live" if live_info else _infer_post_type(item),
+            message=item.get("message"),
+            permalink=item.get("permalink_url"),
+            media_urls=_extract_media_urls(item),
+            is_live=bool(live_info),
+            live_status=live_info["status"] if live_info else None,
+            published_at=_parse_dt(item.get("created_time")),
+        )
+        db.add(post)
+        db.flush()
+        new_post_ids.append(post.id)
+
+    # Directos que arrancaron sin post asociado todavía en /posts
+    for live_item in live_data:
+        if db.scalar(select(Post.id).where(Post.platform_post_id == live_item["id"])):
+            continue
+        post = Post(
+            page_id=page.id,
+            platform_post_id=live_item["id"],
+            type="live",
+            message=live_item.get("title"),
+            permalink=live_item.get("permalink_url"),
+            is_live=True,
+            live_status=live_item.get("status"),
+            published_at=_parse_dt(live_item.get("creation_time")),
+        )
+        db.add(post)
+        db.flush()
+        new_post_ids.append(post.id)
+
+    return new_post_ids
+
+
+def _ingest_youtube(db: Session, page: Page) -> list[int]:
+    new_post_ids: list[int] = []
+    try:
+        videos = _run_async(_fetch_youtube_videos(page.fb_page_id))
+    except YouTubeError:
+        return []
+
+    for video in videos:
+        video_id = video["video_id"]
+        if db.scalar(select(Post.id).where(Post.platform_post_id == video_id)):
+            continue  # deduplicador
+
+        title = video.get("title", "")
+        description = video.get("description", "")
+        message = f"{title}\n\n{description}".strip() if description else title
+        thumbnail = video.get("thumbnail")
+        post = Post(
+            page_id=page.id,
+            platform_post_id=video_id,
+            type="video",
+            message=message,
+            permalink=f"https://www.youtube.com/watch?v={video_id}",
+            media_urls=[thumbnail] if thumbnail else None,
+            published_at=_parse_dt(video.get("published_at")),
+        )
+        db.add(post)
+        db.flush()
+        new_post_ids.append(post.id)
+
+    return new_post_ids
+
+
 @celery_app.task(name="osint.poll_page")
 def poll_page(page_id: int) -> None:
-    """Consulta /posts + /live_videos de una página, deduplica y guarda los ítems nuevos."""
+    """Trae los ítems nuevos de una página/canal (según su plataforma), deduplica y los procesa."""
     now = datetime.now(timezone.utc)
-    new_post_ids: list[int] = []
 
     with SyncSessionLocal() as db:
         page = db.get(Page, page_id)
         if page is None or not page.is_active:
             return
 
-        try:
-            posts_data, live_data = _run_async(_fetch_page_content(page.fb_page_id))
-        except GraphAPIError:
-            return  # el próximo tick reintenta; el rate-limit ya lo detecta el cliente
-
-        live_by_id = {item["id"]: item for item in live_data}
-
-        for item in posts_data:
-            platform_post_id = item["id"]
-            if db.scalar(select(Post.id).where(Post.platform_post_id == platform_post_id)):
-                continue  # deduplicador: ya visto
-
-            live_info = live_by_id.get(platform_post_id)
-            post = Post(
-                page_id=page.id,
-                platform_post_id=platform_post_id,
-                type="live" if live_info else _infer_post_type(item),
-                message=item.get("message"),
-                permalink=item.get("permalink_url"),
-                media_urls=_extract_media_urls(item),
-                is_live=bool(live_info),
-                live_status=live_info["status"] if live_info else None,
-                published_at=_parse_dt(item.get("created_time")),
-            )
-            db.add(post)
-            db.flush()
-            new_post_ids.append(post.id)
-
-        # Directos que arrancaron sin post asociado todavía en /posts
-        for live_item in live_data:
-            if db.scalar(select(Post.id).where(Post.platform_post_id == live_item["id"])):
-                continue
-            post = Post(
-                page_id=page.id,
-                platform_post_id=live_item["id"],
-                type="live",
-                message=live_item.get("title"),
-                permalink=live_item.get("permalink_url"),
-                is_live=True,
-                live_status=live_item.get("status"),
-                published_at=_parse_dt(live_item.get("creation_time")),
-            )
-            db.add(post)
-            db.flush()
-            new_post_ids.append(post.id)
+        if page.platform == "youtube":
+            new_post_ids = _ingest_youtube(db, page)
+        else:
+            new_post_ids = _ingest_facebook(db, page)
 
         page.last_polled_at = now
         db.commit()

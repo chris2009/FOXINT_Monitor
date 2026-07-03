@@ -14,6 +14,9 @@ class Settings(BaseSettings):
     fb_access_token: str = ""
     graph_api_version: str = "v25.0"
 
+    # YouTube Data API v3
+    youtube_api_key: str = ""
+
     # Postgres
     database_url: str = "postgresql+asyncpg://osint:osint@postgres:5432/osint_monitor"
 
