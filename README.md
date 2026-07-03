@@ -250,6 +250,7 @@ Ideal para ver el dashboard, el análisis de sentimiento y la búsqueda semánti
      - *Por texto*: escribe `un perro`, `jugadores de deporte` o `un autobús en la calle` → encuentra la foto correspondiente aunque el texto del post no lo diga.
      - *Por imagen*: sube una foto de referencia (ej. cualquier imagen de un autobús) → encuentra los posts con imágenes visualmente similares.
    - En **Entidades**: verás las personas, lugares y organizaciones detectadas automáticamente (`ONPE`, `Ministerio de Salud`, `Trujillo`, `Lima`…). Haz clic en una para ver los posts que la mencionan.
+   - En **Búsqueda facial**: sube una imagen con una cara (por ejemplo, guarda la foto de los futbolistas del post demo y súbela) → encuentra las imágenes capturadas con caras parecidas. Subir una imagen sin cara (ej. la del perro) responde con un aviso de que no se detectó ninguna cara.
    - En **Reglas**: crea una regla (ej. etiqueta `Protesta`, keywords `protesta, cortes`) para tenerla lista.
 
 3. **Probar las búsquedas por API** directamente (opcional):
@@ -323,6 +324,7 @@ docker compose exec ollama ollama list      # deben aparecer qwen2.5 y nomic-emb
 8. La **búsqueda semántica de texto** (`/api/search` o la pestaña "Búsqueda") consulta por significado sobre el texto de los posts — "epidemias" encuentra un post sobre dengue aunque no use esa palabra.
 9. La **búsqueda visual** (`/api/search/images` o la pestaña "Búsqueda visual") consulta el *contenido de las imágenes*, por texto ("un autobús") o subiendo una imagen de referencia (encuentra fotos parecidas). Ambas se pueden acotar a una página o buscar en todas.
 10. El panel de **Entidades** (`/api/entities` o la pestaña "Entidades") lista las personas, lugares y organizaciones que el NER encontró automáticamente en los posts, con su conteo; al hacer clic en una entidad se ven los posts que la mencionan (como el panel de filtros de INTELION).
+11. La **búsqueda facial** (`/api/search/faces` o la pestaña "Búsqueda facial") detecta las caras en las imágenes capturadas; subes una foto con una cara y encuentra imágenes con caras **parecidas** entre lo ya capturado. Es similitud sobre el corpus autorizado — **no** identifica personas ni busca en la web abierta.
 
 ---
 
@@ -341,11 +343,11 @@ Este proyecto se construye **incrementalmente**. Estado real al día de hoy:
 - **Indexado de embeddings de texto** (`nomic-embed-text`) e **imagen** (CLIP) por post, con búsqueda pgvector (índices HNSW coseno).
 - **Búsqueda semántica de texto** + **búsqueda visual** (texto→imagen e imagen→imagen) con CLIP multilingüe.
 - **Extracción de entidades** (personas, lugares, organizaciones) con panel agregado y filtro de posts por entidad.
+- **Búsqueda por similitud facial** (facenet/MTCNN + VGGFace2) sobre el corpus capturado — similitud, no identificación biométrica.
 - Alertas a Telegram cuando se dispara una regla de keyword o se detecta un live.
 - **Dashboard funcional**: registro/listado de páginas, timeline con detecciones por post, gestión de reglas, historial de alertas, búsqueda semántica y búsqueda visual.
 
 **🚧 Pendiente (próximos incrementos)**
-- **Similitud facial** sobre el corpus (detección + embedding de caras).
 - Búsqueda por **audio** (transcripción S2T de videos/lives con faster-whisper).
 - **OCR** de texto embebido en imágenes (`OCRAnalyzer`, EasyOCR).
 - **YouTube** como fuente de ingesta adicional (nuevo conector).
@@ -438,6 +440,16 @@ El proyecto es **100% portable** entre máquinas con Docker + WSL2:
 
 **`port is already allocated` al levantar `postgres` u `ollama`**
 Si ya tienes Postgres u Ollama corriendo nativamente en Windows (o de otro proyecto Docker) en los puertos por defecto (5432 / 11434), habrá conflicto. Este repo ya remapea `postgres` a `5433` y `ollama` a `11435` en el host (ver `docker-compose.yml`) precisamente por esto — la red interna entre contenedores sigue usando los puertos estándar (5432 / 11434), así que no hay que tocar `DATABASE_URL` ni `OLLAMA_HOST`. Si el conflicto persiste, revisa qué más está usando el puerto con `docker ps` (otros proyectos) o `netstat -ano | grep <puerto>` (procesos nativos de Windows) y ajusta el mapeo en `docker-compose.yml`.
+
+**El build de la imagen del backend/worker tumba Docker Desktop (RPC EOF, daemon se cae)**
+Las imágenes de IA son pesadas (torch + CLIP + spaCy + facenet); al **comprimir/exportar las capas grandes**, WSL2 puede agotar su memoria/swap por defecto y matar el engine de Docker. Solución: darle más recursos a WSL2 creando `C:\Users\<tú>\.wslconfig` con, por ejemplo:
+```
+[wsl2]
+memory=20GB
+swap=16GB
+processors=8
+```
+Luego aplica: `wsl --shutdown` (en PowerShell) y reinicia Docker Desktop. El **swap amplio** es lo que evita el crash durante el export. Ajusta los valores a tu RAM (aquí se asume una máquina de 32 GB).
 
 **`docker compose up` falla en `postgres` con "database is uninitialized"**
 Puede pasar si cambiaste `POSTGRES_USER`/`POSTGRES_PASSWORD` después de la primera vez que se creó el volumen. Solución: `docker compose down -v` (borra datos) y vuelve a levantar.
