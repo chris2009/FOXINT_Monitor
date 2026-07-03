@@ -26,6 +26,7 @@ services:
       - .env
     volumes:
       - ./backend:/app
+      - torchcache:/root/.cache/torch
     depends_on:
       postgres:
         condition: service_healthy
@@ -43,6 +44,7 @@ services:
       - .env
     volumes:
       - ./backend:/app
+      - torchcache:/root/.cache/torch
     depends_on:
       postgres:
         condition: service_healthy
@@ -50,7 +52,7 @@ services:
         condition: service_started
     networks:
       - osint-net
-    # concurrency baja a propósito: cada proceso carga torch + modelos CLIP en memoria;
+    # concurrency baja a propósito: cada proceso carga torch + modelos CLIP/facial en memoria;
     # 2 procesos es suficiente en local y evita agotar la RAM.
     command: celery -A app.workers.celery_app worker --loglevel=info --concurrency=2
 
@@ -138,3 +140,4 @@ volumes:
   redisdata:
   miniodata:
   ollamadata:
+  torchcache:  # pesos de reconocimiento facial (VGGFace2), descargados en el primer uso

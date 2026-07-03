@@ -72,6 +72,13 @@ export interface EntityCount {
   count: number;
 }
 
+export interface FaceSearchResult {
+  post: Post;
+  image_url: string;
+  bbox: number[] | null;
+  score: number;
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${API_URL}${path}`, {
     ...init,
@@ -139,5 +146,21 @@ export const api = {
       throw new Error(body?.detail ?? `Error ${response.status}`);
     }
     return (await response.json()) as ImageSearchResult[];
+  },
+
+  searchByFace: async (file: File, pageId?: number) => {
+    const params = new URLSearchParams();
+    if (pageId !== undefined) params.set("page_id", String(pageId));
+    const form = new FormData();
+    form.append("file", file);
+    const response = await fetch(`${API_URL}/api/search/faces?${params.toString()}`, {
+      method: "POST",
+      body: form,
+    });
+    if (!response.ok) {
+      const body = await response.json().catch(() => null);
+      throw new Error(body?.detail ?? `Error ${response.status}`);
+    }
+    return (await response.json()) as FaceSearchResult[];
   },
 };

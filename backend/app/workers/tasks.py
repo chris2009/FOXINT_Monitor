@@ -24,11 +24,13 @@ from app.db.sync_session import SyncSessionLocal
 from app.models.alert import Alert
 from app.models.detection import Detection
 from app.models.embedding import PostEmbedding
+from app.models.face import PostFace
 from app.models.image_embedding import PostImageEmbedding
 from app.models.keyword_rule import KeywordRule
 from app.models.page import Page
 from app.models.post import Post
 from app.services.embeddings import embed_text
+from app.services.face_embeddings import index_faces
 from app.services.graph_api import GraphAPIClient, GraphAPIError
 from app.services.image_embeddings import embed_image
 from app.services.telegram import TelegramNotifier
@@ -202,7 +204,7 @@ def process_post(post_id: int) -> None:
                 _dispatch_alert(db, post, message, rule=None, channels=["telegram"])
 
         _index_embedding(db, post)
-        _index_image_embeddings(db, post)
+        _index_media(db, post)
         db.commit()
 
 
@@ -231,21 +233,46 @@ def _download_image(url: str) -> bytes | None:
     return content
 
 
-def _index_image_embeddings(db: Session, post: Post) -> None:
-    """Descarga y embebe (CLIP) cada imagen del post, para la búsqueda visual (/api/search/images)."""
+def _index_media(db: Session, post: Post) -> None:
+    """Por cada imagen del post: la descarga UNA vez y la indexa para búsqueda visual (CLIP) y facial.
+
+    - CLIP  -> post_image_embeddings (búsqueda por contenido de la imagen).
+    - Caras -> post_faces            (búsqueda por similitud facial).
+    """
     for url in post.media_urls or []:
-        if db.scalar(
+        already_clip = db.scalar(
             select(PostImageEmbedding.id).where(
                 PostImageEmbedding.post_id == post.id, PostImageEmbedding.image_url == url
             )
-        ):
-            continue  # ya indexada
+        )
+        already_faces = db.scalar(
+            select(PostFace.id).where(PostFace.post_id == post.id, PostFace.image_url == url)
+        )
+        if already_clip and already_faces:
+            continue
 
         image_bytes = _download_image(url)
         if image_bytes is None:
             continue
-        try:
-            vector = embed_image(image_bytes)
-        except Exception:
-            continue  # imagen corrupta o formato no soportado: se omite sin romper la tarea
-        db.add(PostImageEmbedding(post_id=post.id, image_url=url, embedding=vector))
+
+        if not already_clip:
+            try:
+                vector = embed_image(image_bytes)
+                db.add(PostImageEmbedding(post_id=post.id, image_url=url, embedding=vector))
+            except Exception:
+                pass  # imagen corrupta o formato no soportado: se omite sin romper la tarea
+
+        if not already_faces:
+            try:
+                for face in index_faces(image_bytes):
+                    db.add(
+                        PostFace(
+                            post_id=post.id,
+                            image_url=url,
+                            face_index=face["face_index"],
+                            bbox=face["bbox"],
+                            embedding=face["embedding"],
+                        )
+                    )
+            except Exception:
+                pass  # error de detección facial: no debe romper el resto del pipeline
