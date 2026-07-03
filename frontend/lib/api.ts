@@ -55,6 +55,11 @@ export interface Alert {
   sent_at: string;
 }
 
+export interface SearchResult {
+  post: Post;
+  score: number;
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${API_URL}${path}`, {
     ...init,
@@ -87,4 +92,10 @@ export const api = {
     request<KeywordRule>(`/api/rules/${id}`, { method: "PATCH", body: JSON.stringify(payload) }),
 
   listAlerts: () => request<Alert[]>("/api/alerts"),
+
+  search: (q: string, pageId?: number) => {
+    const params = new URLSearchParams({ q });
+    if (pageId !== undefined) params.set("page_id", String(pageId));
+    return request<SearchResult[]>(`/api/search?${params.toString()}`);
+  },
 };

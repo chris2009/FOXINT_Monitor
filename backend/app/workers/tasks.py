@@ -22,9 +22,11 @@ from app.analyzers import get_analyzers
 from app.db.sync_session import SyncSessionLocal
 from app.models.alert import Alert
 from app.models.detection import Detection
+from app.models.embedding import PostEmbedding
 from app.models.keyword_rule import KeywordRule
 from app.models.page import Page
 from app.models.post import Post
+from app.services.embeddings import embed_text
 from app.services.graph_api import GraphAPIClient, GraphAPIError
 from app.services.telegram import TelegramNotifier
 from app.workers.celery_app import celery_app
@@ -194,4 +196,16 @@ def process_post(post_id: int) -> None:
                 message = f"Live iniciado en {post.page.name}: {post.permalink}"
                 _dispatch_alert(db, post, message, rule=None, channels=["telegram"])
 
+        _index_embedding(db, post)
         db.commit()
+
+
+def _index_embedding(db: Session, post: Post) -> None:
+    """Genera y guarda el vector semántico del post, para la búsqueda por similitud (/api/search)."""
+    if not (post.message and post.message.strip()):
+        return
+    if db.scalar(select(PostEmbedding.post_id).where(PostEmbedding.post_id == post.id)):
+        return  # ya indexado
+
+    vector = _run_async(embed_text(post.message[:2000]))
+    db.add(PostEmbedding(post_id=post.id, embedding=vector))

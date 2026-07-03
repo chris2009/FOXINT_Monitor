@@ -227,9 +227,10 @@ curl http://localhost:8000/api/pages
 2. El sistema **valida automáticamente** que sea una Página pública (nunca un perfil).
 3. **Celery Beat** revisa cada 60s qué páginas ya cumplieron su `poll_interval` individual y encola su polling.
 4. El **worker** llama a `/posts` + `/live_videos` de la Graph API, **deduplica** contra lo ya visto, y guarda los posts nuevos.
-5. Cada post nuevo pasa por el **bus de analizadores**: `KeywordAnalyzer` (reglas que definas), `SentimentAnalyzer` (Ollama), `LiveDetector` (marca lives en curso).
+5. Cada post nuevo pasa por el **bus de analizadores**: `KeywordAnalyzer` (reglas que definas), `SentimentAnalyzer` (Ollama), `LiveDetector` (marca lives en curso). Además se **indexa su embedding** (`nomic-embed-text`) en `post_embeddings` para la búsqueda semántica.
 6. Si una regla de keyword coincide, o se detecta un live iniciado, se dispara una **alerta a Telegram** y queda registrada en la tabla `alerts`.
 7. El **dashboard** muestra el timeline de posts por página, sus detecciones y el historial de alertas.
+8. La **búsqueda semántica** (`/api/search` o la pestaña "Búsqueda") permite consultar por significado sobre todos los posts capturados — por ejemplo "epidemias" encuentra un post sobre dengue aunque no use esa palabra. Se puede acotar a una página o buscar en todas.
 
 ---
 
@@ -241,16 +242,17 @@ Este proyecto se construye **incrementalmente**. Estado real al día de hoy:
 - Monorepo (frontend Next.js 15 + backend FastAPI) y Docker Compose con los 8 servicios.
 - Esquema completo de base de datos (7 tablas) + migraciones Alembic (incluye extensión `pgvector`).
 - Cliente Graph API async con **validación Página/Perfil** integrada en el endpoint de registro.
-- Endpoints `POST /api/pages` y `GET /api/pages`.
+- Endpoints REST: páginas, posts, detecciones, reglas de keywords, alertas y **búsqueda semántica** (`/api/search`).
 - Scheduler de polling (Celery Beat) que respeta el `poll_interval` configurado por página.
 - Deduplicador de posts (contra `platform_post_id`).
 - Bus de analizadores con **auto-discovery**: `KeywordAnalyzer`, `SentimentAnalyzer` (Ollama), `LiveDetector`.
+- **Indexado de embeddings** (`nomic-embed-text`) por post + **búsqueda semántica** con pgvector (índice HNSW coseno).
 - Alertas a Telegram cuando se dispara una regla de keyword o se detecta un live.
+- **Dashboard funcional**: registro/listado de páginas, timeline con detecciones por post, gestión de reglas, historial de alertas y búsqueda semántica.
 
 **🚧 Pendiente (próximos incrementos)**
-- Dashboard funcional (hoy el frontend es un placeholder sin páginas reales).
-- Endpoints de reglas (`/api/rules`), detecciones (`/api/posts/{id}/detections`), alertas (`/api/alerts`) y búsqueda semántica (`/api/search`).
-- Analizadores de Fase 2: `NERAnalyzer` (spaCy), `OCRAnalyzer` (EasyOCR), `EmbeddingAnalyzer` (pgvector).
+- Búsqueda por **imagen** (embeddings de imagen + OCR) y por **audio** (transcripción S2T de VODs de lives).
+- Analizadores de Fase 2: `NERAnalyzer` (spaCy), `OCRAnalyzer` (EasyOCR).
 - RBAC de usuarios (admin/analyst/viewer) — el modelo `users` existe pero no hay auth implementada.
 - WebSocket de alertas en tiempo real (`/ws/alerts`).
 - Reportes exportables (PDF/CSV).
